@@ -8,7 +8,7 @@ in database columns.
 This is the primary interface for the PII scanning functionality.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from .regex_rules import RegexRules
 from .classifier import PIIClassification, DetectionReason
 from .classifier import PIIDetector as ClassifierPIIDetector
@@ -233,6 +233,12 @@ class PIIDetector:
             if combined["confidence"] > 0.5:
                 result_conf = combined["confidence"]
                 result_class = combined["classification"]
+                # The classifier exposes classification names as strings in
+                # its confidence result, while PIIScanResult consumers expect
+                # the PIIClassification enum (for example SchemaScanner uses
+                # ``result.classification.name``).
+                if isinstance(result_class, str):
+                    result_class = PIIClassification[result_class]
                 result_reasons = combined["reasons"]
                 result_detected = self._get_detected_type(result_class)
             else:

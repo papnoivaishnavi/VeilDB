@@ -74,15 +74,6 @@ class TestMaskingStrategies:
         assert result[-4:] == "sked"  # "masked" -> last 4 are "sked"
 
 
-class RedactMask:
-    """REDACT strategy: Replace the entire value with 'REDACTED'."""
-
-    def apply(self, value: Any, context: Optional[Dict[str, Any]] = None) -> Any:
-        if value is None:
-            return None
-        return "REDACTED"
-
-
 class TestRedactMask:
     """Tests for the REDACT strategy."""
 
