@@ -1,0 +1,64 @@
+"""FastAPI endpoints for VeilDB schema inspection and masked queries."""
+
+from __future__ import annotations
+
+import os
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy import inspect
+
+from backend.app.database import DEFAULT_DATABASE_URL, create_database_engine, get_database_url
+from backend.app.query_engine import QueryEngine, QueryEngineError
+from backend.seed import seed_demo_database
+
+
+engine = create_database_engine(get_database_url())
+query_engine = QueryEngine(engine)
+
+app = FastAPI(
+    title="VeilDB",
+    description="Schema inspection and role-aware PII masking for SQL SELECT queries.",
+    version="1.0.0",
+)
+
+
+class QueryRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=20_000)
+    role: str = Field(..., min_length=1, max_length=32)
+
+
+@app.on_event("startup")
+def initialize_demo_database() -> None:
+    """Seed the bundled local demo DB on first run; leave configured DBs untouched."""
+    if (
+        get_database_url() == DEFAULT_DATABASE_URL
+        and not os.environ.get("DATABASE_URL")
+        and not inspect(engine).get_table_names()
+    ):
+        seed_demo_database(engine)
+
+
+@app.get("/schema")
+def get_schema() -> dict:
+    """List tables and column classifications detected from schema samples."""
+    try:
+        return query_engine.inspect_schema()
+    except Exception as error:
+        raise HTTPException(status_code=500, detail="Database schema inspection failed.") from error
+
+
+@app.post("/query")
+def run_query(request: QueryRequest) -> dict:
+    """Execute a read-only SELECT and return role-masked rows and column policies."""
+    try:
+        return query_engine.execute(request.query, request.role)
+    except QueryEngineError as error:
+        status_code = 403 if "unknown role" in str(error).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(error)) from error
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("backend.app.api:app", host="127.0.0.1", port=8000, reload=True)

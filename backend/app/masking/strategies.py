@@ -5,6 +5,7 @@ Implements various data masking strategies for the Smart Data Masking System.
 import re
 import hmac
 import hashlib
+from typing import Any, Dict, Optional
 
 
 class MaskingStrategy:
