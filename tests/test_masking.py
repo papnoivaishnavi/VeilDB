@@ -73,6 +73,22 @@ class TestMaskingStrategies:
         # Last 4 chars should be the original last 4 chars
         assert result[-4:] == "sked"  # "masked" -> last 4 are "sked"
 
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("ABCDE1234F", "******234F"),
+            ("123-45-6789", "***-**-6789"),
+            ("1990-05-15", "1990-**-**"),
+            ("15/05/1990", "**/**/1990"),
+            ("15-05-1990", "**-**-1990"),
+            ("Aarav Mehta", "Aa*******ta"),
+            ("Ravi Das", "Ra****as"),
+            ("Li", "**"),
+        ],
+    )
+    def test_partial_mask_hides_most_of_structured_values(self, value, expected):
+        assert PartialMask().apply(value) == expected
+
 
 class TestRedactMask:
     """Tests for the REDACT strategy."""
@@ -196,13 +212,25 @@ class TestMaskingEngine:
         assert result == ""
 
     def test_mask_value_unknown_strategy(self):
-        """Test mask_value with unknown strategy (should return value unchanged)."""
+        """An unknown strategy must fail closed instead of exposing the value."""
         engine = MaskingEngine()
 
         result = engine.mask_value(
             "4111111111111111", strategy="UNKNOWN_STRATEGY"
         )
-        assert result == "4111111111111111"  # Safe fallback: return unchanged
+        assert result == "REDACTED"
+
+    def test_mask_value_strategy_error_fails_closed(self, monkeypatch):
+        """A strategy that raises must not leak the original value."""
+        from backend.app.masking import strategies
+
+        class BrokenMask(strategies.MaskingStrategy):
+            def apply(self, value, context=None):
+                raise RuntimeError("masking failed")
+
+        monkeypatch.setitem(strategies.STRATEGY_REGISTRY, "BROKEN", BrokenMask())
+
+        assert strategies.mask_value("4111111111111111", "BROKEN") == "REDACTED"
 
     def test_mask_engine_mask_column_value(self):
         """Test mask_column_value convenience method."""

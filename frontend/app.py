@@ -5,11 +5,16 @@ from __future__ import annotations
 import html
 import inspect
 import os
+import sys
+from pathlib import Path
 from typing import Any
 
 import requests
 import streamlit as st
 import pandas as pd
+
+# Streamlit only adds frontend/ to the path, and the app imports from backend/.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from backend.app.security.rbac import Classification, RBAC, Role
 
