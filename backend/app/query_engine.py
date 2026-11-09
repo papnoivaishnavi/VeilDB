@@ -332,6 +332,22 @@ class QueryEngine:
         self.masker = masker or MaskingEngine()
         self.max_rows = max(1, max_rows)
 
+    def referenced_tables(self, statement: str) -> list[str]:
+        """Return the existing tables a statement names, for the audit log.
+
+        Names are checked against the database so that arbitrary text placed in
+        a table position is never recorded. Auditing must not affect the query,
+        so an unparsable statement or a failed lookup yields no tables.
+        """
+        dialect = _SQLGLOT_DIALECTS.get(self.engine.dialect.name)
+        try:
+            known_tables = {name.casefold(): name for name in self.adapter.get_tables()}
+            tree = sqlglot.parse_one(statement, dialect=dialect)
+        except (SqlglotError, SQLAlchemyError, RecursionError):
+            return []
+        referenced = {source.name.casefold() for source in tree.find_all(exp.Table)}
+        return [known_tables[name] for name in referenced if name in known_tables]
+
     def inspect_schema(self) -> dict[str, Any]:
         """Return SQLAlchemy column metadata annotated with Member 1's scan results."""
         result, _ = self._inspect_schema()

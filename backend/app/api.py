@@ -5,10 +5,11 @@ from __future__ import annotations
 import os
 import secrets
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import inspect
 
+from backend.app.audit import ALLOWED, BLOCKED, ERROR, MAX_AUDIT_EVENTS, UNAUTHORIZED, AuditLog
 from backend.app.database import DEFAULT_DATABASE_URL, create_database_engine, get_database_url
 from backend.app.query_engine import QueryEngine, QueryEngineError
 from backend.seed import seed_demo_database
@@ -16,6 +17,7 @@ from backend.seed import seed_demo_database
 
 engine = create_database_engine(get_database_url())
 query_engine = QueryEngine(engine)
+audit_log = AuditLog()
 
 app = FastAPI(
     title="VeilDB",
@@ -44,6 +46,7 @@ def authenticated_role(x_api_key: str | None = Header(default=None)) -> str:
         if configured and secrets.compare_digest(configured, supplied):
             role = candidate
     if role is None:
+        audit_log.record(None, UNAUTHORIZED)
         raise HTTPException(status_code=401, detail="Invalid or missing API key.")
     return role
 
@@ -71,11 +74,29 @@ def get_schema() -> dict:
 @app.post("/query")
 def run_query(request: QueryRequest, role: str = Depends(authenticated_role)) -> dict:
     """Execute a read-only SELECT and return role-masked rows and column policies."""
+    tables = query_engine.referenced_tables(request.query)
     try:
-        return query_engine.execute(request.query, role)
+        result = query_engine.execute(request.query, role)
     except QueryEngineError as error:
+        audit_log.record(role, BLOCKED, tables)
         status_code = 403 if "unknown role" in str(error).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(error)) from error
+    except Exception:
+        audit_log.record(role, ERROR, tables)
+        raise
+    audit_log.record(role, ALLOWED, tables, result["row_count"])
+    return result
+
+
+@app.get("/audit")
+def get_audit_events(
+    limit: int = Query(default=100, ge=1, le=MAX_AUDIT_EVENTS),
+    role: str = Depends(authenticated_role),
+) -> dict:
+    """Return recent audit events, newest first. Requires the ADMIN API key."""
+    if role != "ADMIN":
+        raise HTTPException(status_code=403, detail="The audit log requires the ADMIN role.")
+    return {"events": audit_log.recent(limit)}
 
 
 if __name__ == "__main__":

@@ -150,6 +150,7 @@ VeilDB/
 ├── backend/
 │   └── app/
 │       ├── api.py            # FastAPI endpoints and API key authentication
+│       ├── audit.py          # Audit trail of access decisions
 │       ├── database.py       # SQLAlchemy engine and schema adapter
 │       ├── query_engine.py   # SELECT validation, execution, and masking
 │       ├── masking/          # Masking strategies
@@ -271,6 +272,7 @@ VeilDB exposes REST API endpoints through FastAPI.
 | ------ | --------- | ------------------------------- |
 | GET    | `/schema` | Inspect database schema         |
 | POST   | `/query`  | Execute and process SQL queries |
+| GET    | `/audit`  | View recent access decisions (ADMIN only) |
 
 ### GET /schema
 
@@ -295,6 +297,18 @@ curl -X POST http://127.0.0.1:8000/query \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <analyst-key>" \
   -d '{"query": "SELECT * FROM customers"}'
+```
+
+### GET /audit
+
+Returns recent access decisions, newest first, and requires the ADMIN API key. The optional `limit` parameter accepts 1 to 1000 and defaults to 100.
+
+Each event contains the timestamp, role, outcome (`ALLOWED`, `BLOCKED`, `ERROR`, or `UNAUTHORIZED`), scanned table names, and row count. Raw SQL and result values are never recorded because they can contain personal data.
+
+Events are kept in memory, up to the latest 1000, and written to stdout as JSON. The in-memory list resets when the API restarts and is per process.
+
+```bash
+curl -H "X-API-Key: <admin-key>" "http://127.0.0.1:8000/audit?limit=20"
 ```
 
 ---
@@ -384,7 +398,7 @@ The detector favors over-flagging, which hides more data rather than exposing it
 * Support for additional database engines.
 * More configurable masking strategies.
 * Fine-grained column-level permissions.
-* Comprehensive audit logging.
+* Durable, tamper-evident audit storage.
 * Policy management through the dashboard.
 * Docker-based deployment.
 * Integration with enterprise authentication systems.

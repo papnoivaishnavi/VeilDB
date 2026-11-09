@@ -533,6 +533,36 @@ def _render_schema_explorer(schema: dict[str, Any] | None, connected: bool) -> N
             _render_schema_table(table_info)
 
 
+def _render_audit_log(api_url: str) -> None:
+    st.caption("Recent access decisions, newest first. Raw SQL and result values are never recorded.")
+    try:
+        response = requests.get(
+            f"{api_url}/audit",
+            headers={"X-API-Key": os.environ.get("VEILDB_ADMIN_API_KEY", "")},
+            timeout=15,
+        )
+        response.raise_for_status()
+        events = response.json()["events"]
+    except (requests.RequestException, ValueError, KeyError, TypeError) as error:
+        st.error(f"Could not load the audit log. ({error})")
+        return
+
+    if not events:
+        st.info("No audit events have been recorded yet.")
+        return
+    rows = [
+        {
+            "Time (UTC)": event["timestamp"],
+            "Role": event["role"] or "—",
+            "Outcome": event["outcome"],
+            "Tables": ", ".join(event["tables"]) or "—",
+            "Rows": "—" if event["row_count"] is None else str(event["row_count"]),
+        }
+        for event in events
+    ]
+    _show_dataframe(rows, hide_index=True)
+
+
 def _render_security_insights(schema: dict[str, Any] | None, connected: bool, selected_role: str) -> None:
     st.markdown('<div class="eyebrow">DETECTION & POLICY</div>', unsafe_allow_html=True)
     st.subheader("Security Insights")
@@ -574,6 +604,12 @@ def _render_security_insights(schema: dict[str, Any] | None, connected: bool, se
             _render_masking_policies(policies)
     elif field_count:
         st.info(f"Run a query as {selected_role} to see the API's actual per-column result metadata for this role.")
+
+    st.markdown('<div class="section-label">AUDIT LOG</div>', unsafe_allow_html=True)
+    if selected_role == "ADMIN":
+        _render_audit_log(API_URL)
+    else:
+        st.info("The audit log is available to the ADMIN role only.")
 
 
 st.markdown(
