@@ -215,6 +215,28 @@ pip install -r requirements.txt
 
 ### 4. Start the Backend
 
+Choose your own secret values and set them in both the backend and frontend terminals.
+
+Windows (PowerShell):
+
+```powershell
+$env:VEILDB_ADMIN_API_KEY = "<admin-key>"
+$env:VEILDB_SUPPORT_API_KEY = "<support-key>"
+$env:VEILDB_ANALYST_API_KEY = "<analyst-key>"
+$env:VEILDB_HMAC_KEY = "<hash-key>"
+```
+
+Linux / macOS:
+
+```bash
+export VEILDB_ADMIN_API_KEY=<admin-key>
+export VEILDB_SUPPORT_API_KEY=<support-key>
+export VEILDB_ANALYST_API_KEY=<analyst-key>
+export VEILDB_HMAC_KEY=<hash-key>
+```
+
+Without `VEILDB_HMAC_KEY`, the API uses a random key and hashed values change after each restart.
+
 Start the FastAPI application using its configured Uvicorn entry point.
 
 ```bash
@@ -267,16 +289,16 @@ curl http://127.0.0.1:8000/schema
 
 Processes a SQL query through the VeilDB security and masking pipeline.
 
+The role comes from the required `X-API-Key` header, not from the request body.
+
 Example request:
 
-```json
-{
-  "query": "SELECT * FROM customers",
-  "role": "ANALYST"
-}
+```bash
+curl -X POST http://127.0.0.1:8000/query \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <analyst-key>" \
+  -d '{"query": "SELECT * FROM customers"}'
 ```
-
-*Adjust request fields to match the actual API schema exposed by Swagger.*
 
 ---
 
@@ -295,6 +317,10 @@ Example policy behavior:
 
 ADMIN has full access under the configured role policy.
 
+For roles with masked columns, a masked column can only be selected directly. Using one in `WHERE`, `JOIN`, `GROUP BY`, `ORDER BY`, or an expression is rejected, as are `UNION` and subqueries.
+
+The Streamlit role selector is a demo convenience. Its process holds all three API keys, so do not expose it to untrusted users.
+
 ### Why Role-Aware Masking?
 
 Different users require different levels of information.
@@ -311,9 +337,10 @@ VeilDB makes this distinction part of the query-processing workflow.
 
 ## 🧪 Testing
 
-Run the project's test suite using:
+Install the test dependencies, then run the project's test suite:
 
 ```bash
+pip install -r requirements-dev.txt
 pytest
 ```
 

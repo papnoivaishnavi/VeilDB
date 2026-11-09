@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+import secrets
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import inspect
 
@@ -25,7 +26,26 @@ app = FastAPI(
 
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=20_000)
-    role: str = Field(..., min_length=1, max_length=32)
+
+
+API_KEY_ENV_VARS = {
+    "ADMIN": "VEILDB_ADMIN_API_KEY",
+    "SUPPORT": "VEILDB_SUPPORT_API_KEY",
+    "ANALYST": "VEILDB_ANALYST_API_KEY",
+}
+
+
+def authenticated_role(x_api_key: str | None = Header(default=None)) -> str:
+    """Resolve the caller's role from its API key; roles are never client-supplied."""
+    supplied = (x_api_key or "").encode("utf-8")
+    role = None
+    for candidate, env_var in API_KEY_ENV_VARS.items():
+        configured = os.environ.get(env_var, "").encode("utf-8")
+        if configured and secrets.compare_digest(configured, supplied):
+            role = candidate
+    if role is None:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+    return role
 
 
 @app.on_event("startup")
@@ -49,10 +69,10 @@ def get_schema() -> dict:
 
 
 @app.post("/query")
-def run_query(request: QueryRequest) -> dict:
+def run_query(request: QueryRequest, role: str = Depends(authenticated_role)) -> dict:
     """Execute a read-only SELECT and return role-masked rows and column policies."""
     try:
-        return query_engine.execute(request.query, request.role)
+        return query_engine.execute(request.query, role)
     except QueryEngineError as error:
         status_code = 403 if "unknown role" in str(error).lower() else 400
         raise HTTPException(status_code=status_code, detail=str(error)) from error

@@ -6,6 +6,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+import sqlglot
+from sqlglot import exp
+from sqlglot.errors import SqlglotError
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -45,6 +48,14 @@ _CLASSIFICATION_SENSITIVITY = {
     "NEEDS_REVIEW": 4,
 }
 _STRATEGY_RESTRICTIVENESS = {"FULL": 0, "PARTIAL": 1, "HASH": 2, "REDACT": 3}
+_SQLGLOT_DIALECTS = {
+    "sqlite": "sqlite",
+    "postgresql": "postgres",
+    "mysql": "mysql",
+    "mariadb": "mysql",
+    "mssql": "tsql",
+    "oracle": "oracle",
+}
 
 
 class QueryEngineError(ValueError):
@@ -234,6 +245,65 @@ def _alias_classifications(
     return aliases
 
 
+def _restrict_query(
+    statement: str,
+    dialect_name: str,
+    known_tables: set[str],
+    known_columns: set[str],
+    masked_columns: set[str],
+) -> str:
+    """Reject queries that could reveal masked data and return the SQL to execute.
+
+    A masked column may only appear as a plain output column, where it is masked.
+    Using it anywhere else (filters, joins, sorting, or expressions) would reveal
+    information about the raw value, so those queries are refused. Returning the
+    regenerated SQL ensures the database runs exactly what was analyzed here.
+    """
+    dialect = _SQLGLOT_DIALECTS.get(dialect_name)
+    try:
+        tree = sqlglot.parse_one(statement, dialect=dialect)
+    except SqlglotError as error:
+        raise QueryEngineError("The SELECT query could not be analyzed.") from error
+
+    if not isinstance(tree, exp.Select) or sum(1 for _ in tree.find_all(exp.Select)) != 1:
+        raise QueryEngineError("This role can only run a single SELECT without UNION or subqueries.")
+
+    for source in tree.find_all(exp.Table):
+        if source.name.casefold() not in known_tables:
+            raise QueryEngineError("This role can only query scanned tables.")
+
+    sort_keys = [ordered.this for order in tree.find_all(exp.Order) for ordered in order.expressions]
+    group_keys = [key for group in tree.find_all(exp.Group) for key in group.expressions]
+    if any(key.is_int for key in sort_keys + group_keys):
+        raise QueryEngineError("This role must sort and group by column name, not position.")
+
+    blocked = set(masked_columns)
+    allowed_nodes: list[exp.Column] = []
+    aliases: set[str] = set()
+    for projection in tree.expressions:
+        alias = projection.alias.casefold()
+        if alias:
+            aliases.add(alias)
+        source_column = projection.unalias()
+        if isinstance(source_column, exp.Column) and source_column.name.casefold() in masked_columns:
+            allowed_nodes.append(source_column)
+            if alias:
+                blocked.add(alias)
+
+    for column in tree.find_all(exp.Column):
+        if column.is_star:
+            continue
+        name = column.name.casefold()
+        if name not in known_columns and name not in aliases:
+            raise QueryEngineError(f"Unknown column for this role: {column.name}.")
+        if name in blocked and not any(column is node for node in allowed_nodes):
+            raise QueryEngineError(
+                f"Masked column {column.name} can only be selected directly for this role."
+            )
+
+    return tree.sql(dialect=dialect)
+
+
 def _safe_value(value: Any) -> Any:
     if isinstance(value, (datetime, date)):
         return value.isoformat()
@@ -318,8 +388,25 @@ class QueryEngine:
             raise QueryEngineError("Unknown role. Choose ADMIN, SUPPORT, or ANALYST.")
 
         tokens = _validate_select(statement)
+        schema, known_classifications = self._inspect_schema()
+        masked_columns = {
+            name
+            for name, classifications in known_classifications.items()
+            if any(
+                RBAC.get_masking_policy(role, RBAC.get_classification(item.upper())) != "FULL"
+                for item in classifications
+            )
+        }
+        if masked_columns:
+            statement = _restrict_query(
+                statement,
+                self.engine.dialect.name,
+                {item["table"].casefold() for item in schema["results"]},
+                set(known_classifications),
+                masked_columns,
+            )
+            tokens = _validate_select(statement)
         expressions = _projection_tokens(tokens)
-        _, known_classifications = self._inspect_schema()
         aliases = _alias_classifications(tokens, known_classifications)
         referenced_classifications = [
             classification

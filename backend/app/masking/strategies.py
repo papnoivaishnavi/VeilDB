@@ -2,10 +2,17 @@
 
 Implements various data masking strategies for the Smart Data Masking System.
 """
+import os
 import re
 import hmac
 import hashlib
+import secrets
 from typing import Any, Dict, Optional
+
+
+# Used only when VEILDB_HMAC_KEY is unset, so no key ever ships in the source.
+# Pseudonyms stay stable for one process and change after a restart.
+_EPHEMERAL_HMAC_KEY = secrets.token_hex(32)
 
 
 class MaskingStrategy:
@@ -184,13 +191,14 @@ class HMACMask(MaskingStrategy):
     to use a key derivation function or a per-application secret.
     """
 
-    def __init__(self, key: str = "default-secret-key"):
+    def __init__(self, key: Optional[str] = None):
         """Initialize the HMAC mask with a secret key.
 
         Args:
-            key: Secret key for HMAC computation. Should be kept confidential.
+            key: Secret key for HMAC computation. Defaults to VEILDB_HMAC_KEY,
+                then to a random key generated for this process.
         """
-        self._key = key
+        self._key = key or os.environ.get("VEILDB_HMAC_KEY") or _EPHEMERAL_HMAC_KEY
 
     def apply(self, value: Any, context: Optional[Dict[str, Any]] = None) -> Any:
         """
