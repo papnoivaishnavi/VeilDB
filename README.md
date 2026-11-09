@@ -1,8 +1,61 @@
+<div align="center">
+
 # 🛡️ VeilDB
 
 ### Schema Inspection and Role-Aware PII Masking for SQL Queries
 
 **Protect sensitive database information with intelligent PII detection, role-based access control, and dynamic data masking.**
+
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://veildb.streamlit.app/)
+[![Devpost Submission](https://img.shields.io/badge/Devpost-Submission-003E54?logo=devpost&logoColor=white)](https://devpost.com/software/veildb)
+[![Demo Video](https://img.shields.io/badge/Demo_Video-YouTube-FF0000?logo=youtube&logoColor=white)](https://youtu.be/rtrbTFoVNe4)
+[![DataNova 2026](https://img.shields.io/badge/DataNova-2026-F2A65A)](https://datanova-2026-global-data-thon.devpost.com/)
+[![Track](https://img.shields.io/badge/Track-Cybersecurity_%26_Fraud_Detection-A84A0C)](https://datanova-2026-global-data-thon.devpost.com/)
+
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Tests](https://img.shields.io/badge/Tests-pytest-0A9EDC?logo=pytest&logoColor=white)](#-testing)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
+[Live Demo](https://veildb.streamlit.app/) · [Demo Video](https://youtu.be/rtrbTFoVNe4) · [Devpost Submission](https://devpost.com/software/veildb) · [DataNova 2026](https://datanova-2026-global-data-thon.devpost.com/)
+
+</div>
+
+---
+
+## 🏆 DataNova 2026
+
+VeilDB was built for the [DataNova 2026 Global Data-thon](https://datanova-2026-global-data-thon.devpost.com/) in the Cybersecurity & Fraud Detection track. See the full [project submission on Devpost](https://devpost.com/software/veildb).
+
+## 🎬 Demo
+
+Try the [live demo](https://veildb.streamlit.app/) or watch the [demo video](https://youtu.be/rtrbTFoVNe4). The demo uses fictional data only, and the free hosting tier can take about a minute to wake up.
+
+The same query returns different results for each role:
+
+<table>
+  <tr>
+    <th width="50%">ADMIN: full values</th>
+    <th width="50%">SUPPORT: partially masked</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/admin-view.png" alt="ADMIN query results showing full fictional values"></td>
+    <td><img src="docs/images/support-view.png" alt="SUPPORT query results with partially masked values"></td>
+  </tr>
+  <tr>
+    <th>ANALYST: hashed or redacted</th>
+    <th>Blocked query that could reveal a masked value</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/analyst-view.png" alt="ANALYST query results with hashed and redacted values"></td>
+    <td><img src="docs/images/blocked-query.png" alt="Query sorting by masked salary rejected for ANALYST"></td>
+  </tr>
+</table>
+
+Admins can review access decisions in the audit log, which never stores raw SQL or result values:
+
+<img src="docs/images/audit-log.png" alt="Admin-only audit log of allowed and blocked queries">
 
 ---
 
@@ -93,6 +146,14 @@ Different masking strategies can be applied depending on the sensitivity and acc
 
 The Streamlit dashboard provides an interface for interacting with VeilDB, inspecting database information, and viewing query results.
 
+### 7. Query Protection
+
+For roles with masked columns, VeilDB analyzes each query with sqlglot and rejects any query that could reveal a masked value. The database runs the SQL regenerated from the analyzed query.
+
+### 8. Audit Logging
+
+Admins can review each access decision through the API and dashboard. Events never contain raw SQL or result values.
+
 ---
 
 ## 🏗️ System Architecture
@@ -136,7 +197,8 @@ The Streamlit dashboard provides an interface for interacting with VeilDB, inspe
 | ----------------- | ------------------------------------------- |
 | Backend           | Python, FastAPI                             |
 | Frontend          | Streamlit                                   |
-| Database          | SQL database integration                    |
+| Database          | SQLAlchemy, SQLite demo database            |
+| Query Analysis    | sqlglot                                     |
 | API Documentation | Swagger / OpenAPI                           |
 | Security          | Role-Based Access Control                   |
 | PII Detection     | Pattern-based validation and classification |
@@ -160,11 +222,14 @@ VeilDB/
 ├── evaluation/
 │   └── evaluate_detector.py  # Detector precision and recall on synthetic data
 │
+├── docs/images/              # Demo screenshots
+│
 ├── frontend/
 │   └── app.py                # Streamlit dashboard
 │
 ├── tests/
 │
+├── LICENSE
 └── README.md
 ```
 
@@ -177,7 +242,8 @@ VeilDB/
 * Python 3.10+
 * pip
 * Git
-* A supported SQL database and its connection configuration
+
+No database setup is needed for local use. On first run, the API creates a SQLite database with fictional records.
 
 ### 1. Clone the Repository
 
@@ -252,7 +318,6 @@ http://127.0.0.1:8000/docs
 ### 6. Start the Frontend
 
 ```bash
-python -m pip install streamlit
 python -m streamlit run frontend/app.py
 ```
 
@@ -261,6 +326,24 @@ Access the dashboard:
 ```text
 http://localhost:8501
 ```
+
+---
+
+## ☁️ Deployment
+
+The public demo runs the API on Render and the dashboard on Streamlit Community Cloud.
+
+**API (Render Web Service)**
+
+* Build command: `pip install -r requirements.txt`
+* Start command: `uvicorn backend.app.api:app --host 0.0.0.0 --port $PORT`
+* Environment variables: `PYTHON_VERSION`, `VEILDB_HMAC_KEY`, and the three `VEILDB_*_API_KEY` values
+* Leave `DATABASE_URL` unset to use the fictional demo database
+
+**Dashboard (Streamlit Community Cloud)**
+
+* Main file: `frontend/app.py`
+* Secrets: `VEILDB_API_URL` and the three `VEILDB_*_API_KEY` values
 
 ---
 
@@ -319,18 +402,18 @@ VeilDB uses role-aware policies to determine how sensitive information should be
 
 Example policy behavior:
 
-| Data Classification | SUPPORT                  | ANALYST |
-| ------------------- | ------------------------ | ------- |
-| High PII            | Policy-controlled access | HASH    |
-| Medium PII          | Policy-controlled access | REDACT  |
-| Financial           | Full access              | REDACT  |
-| Needs Review        | Policy-controlled access | REDACT  |
+| Data Classification | SUPPORT | ANALYST |
+| ------------------- | ------- | ------- |
+| High PII            | PARTIAL | HASH    |
+| Medium PII          | PARTIAL | REDACT  |
+| Financial           | FULL    | REDACT  |
+| Needs Review        | PARTIAL | REDACT  |
 
 ADMIN has full access under the configured role policy.
 
 For roles with masked columns, a masked column can only be selected directly. Using one in `WHERE`, `JOIN`, `GROUP BY`, `ORDER BY`, or an expression is rejected, as are `UNION` and subqueries.
 
-The Streamlit role selector is a demo convenience. Its process holds all three API keys, so do not expose it to untrusted users.
+The Streamlit role selector is a demo convenience. Its process holds all three API keys, so do not expose it to untrusted users with real data. The public demo contains fictional data only.
 
 ### Why Role-Aware Masking?
 
@@ -361,7 +444,7 @@ For individual test modules:
 pytest tests/
 ```
 
-Testing should cover:
+The suite of 174 tests covers:
 
 * PII detection accuracy.
 * Masking strategy correctness.
@@ -370,6 +453,8 @@ Testing should cover:
 * Schema inspection.
 * Invalid input handling.
 * Sensitive data protection.
+* Query bypass attempts.
+* Audit logging.
 
 ### Detector Evaluation
 
@@ -383,6 +468,10 @@ Run `python -m evaluation.evaluate_detector` to measure column-level detection o
 The detector favors over-flagging, which hides more data rather than exposing it. Known limitations: digit-only identifiers and dates can be mistaken for PII, and with opaque column names it cannot detect person names, passport numbers, or numeric salaries. These results come from synthetic data and are not a measure of performance on production databases.
 
 ---
+
+## ⚠️ Project Status
+
+VeilDB is a prototype that has been tested on SQLite with fictional data. Connection-level read-only mode is currently implemented for SQLite only, and other databases have not been tested. Audit events held in memory reset when the API restarts.
 
 ## 🎯 Use Cases
 
@@ -415,15 +504,19 @@ Contributions are welcome!
 
 ## 👥 Contributors
 
-Developed collaboratively by the VeilDB team.
+| Member | Contribution |
+| ------ | ------------ |
+| Vaishnavi Papnoi | Database connectivity, SQLAlchemy integration, SQL query execution and interception engine, FastAPI backend, Streamlit dashboard, frontend-backend integration, and dashboard UI/UX |
+| D. Lidiya | PII detection and classification, sensitive data pattern validation, dynamic masking strategies, and role-based access control (RBAC) |
+| Tuan Nguyen | Query security hardening, API key authentication, masking fixes, audit logs, detector evaluation, deployment, presentation, and demo video |
 
 ## 🙏 Acknowledgements
 
-VeilDB is built with these open-source projects: FastAPI, Uvicorn, SQLAlchemy, sqlglot, Streamlit, pandas, and Requests. Tests use pytest and HTTPX. All bundled records and evaluation data are fictional.
+VeilDB is built with these open-source projects: FastAPI, Uvicorn, SQLAlchemy, sqlglot, Streamlit, pandas, and Requests. Tests use pytest and HTTPX. All bundled records and evaluation data are fictional. Generative AI tools assisted development, and the demo video narration uses an AI-generated voice.
 
 ## 📜 License
 
-MIT License
+Released under the [MIT License](LICENSE).
 
 ---
 
