@@ -397,7 +397,7 @@ Developed collaboratively by the VeilDB team.
 
 ## 📜 License
 
-Add the project's chosen open-source license here.
+MIT License
 
 ---
 
