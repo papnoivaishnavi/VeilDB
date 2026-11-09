@@ -12,6 +12,7 @@ Classification levels:
 - NEEDS_REVIEW: Ambiguous or borderline cases
 """
 
+import re
 from typing import Optional, List, Dict, Any, Tuple
 from enum import Enum, auto
 from .regex_rules import RegexRules
@@ -72,6 +73,10 @@ class PIIDetector:
     # Too generic for substring matching: "name" alone must not flag "filename".
     EXACT_ONLY_COLUMN_PATTERNS = {"name"}
 
+    # Short enough to occur inside ordinary words ("company", "span_id",
+    # "classname"), so these must match a whole word of the column name.
+    WHOLE_WORD_COLUMN_PATTERNS = {"pan", "ssn"}
+
     # Classification mapping: PII type -> (classification, base confidence)
     TYPE_CLASSIFICATION: Dict[str, Tuple[PIIClassification, float]] = {
         "CREDIT_CARD": (PIIClassification.PII_HIGH, 0.98),
@@ -116,11 +121,23 @@ class PIIDetector:
 
             return classification, base_confidence, list(self.detection_reasons)
 
+        # Split camelCase before lowercasing so "panNumber" yields "pan".
+        words = set(
+            re.split(
+                r"[^a-z0-9]+",
+                re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", column_name.strip()).lower(),
+            )
+        )
+
         # Check for partial matches (e.g., "user_email", "phone_number")
         for pattern_name, pii_type in self.COLUMN_PATTERNS.items():
             if pattern_name in self.EXACT_ONLY_COLUMN_PATTERNS:
                 continue
-            if pattern_name in column_lower:
+            if pattern_name in self.WHOLE_WORD_COLUMN_PATTERNS:
+                matched = pattern_name in words
+            else:
+                matched = pattern_name in column_lower
+            if matched:
                 classification, base_confidence = self.TYPE_CLASSIFICATION[pii_type]
                 self.detection_reasons.append(DetectionReason.COLUMN_NAME_MATCH)
                 return classification, base_confidence, list(self.detection_reasons)

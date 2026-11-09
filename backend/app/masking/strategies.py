@@ -138,7 +138,20 @@ class PartialMask(MaskingStrategy):
 
         # Credit card detection (16 digits, possibly with spaces/hyphens)
         digits_only = re.sub(r"\D", "", value_str)
-        if re.match(r"^\d{16}$", digits_only):
+        if re.fullmatch(r"[A-Za-z]{5}\d{4}[A-Za-z]", value_str):
+            masked = f"******{value_str[-4:]}"
+
+        elif re.fullmatch(r"\d{3}-\d{2}-\d{4}", value_str):
+            masked = f"***-**-{value_str[-4:]}"
+
+        elif re.fullmatch(r"\d{4}-\d{2}-\d{2}", value_str):
+            masked = f"{value_str[:4]}-**-**"
+
+        elif re.fullmatch(r"\d{2}[/-]\d{2}[/-]\d{4}", value_str):
+            separator = value_str[2]
+            masked = f"**{separator}**{separator}{value_str[-4:]}"
+
+        elif re.match(r"^\d{16}$", digits_only):
             masked = self._mask_credit_card(value_str)
 
         # Phone detection (10+ digits)
@@ -150,9 +163,10 @@ class PartialMask(MaskingStrategy):
             masked = self._mask_email(value_str)
 
         else:
-            # Generic partial masking: show first and last 4 characters
-            if len(value_str) > 8:
-                masked = value_str[:4] + "*" * (len(value_str) - 8) + value_str[-4:]
+            # Generic partial masking: reveal at most half of the value.
+            visible = min(4, len(value_str) // 4)
+            suffix = value_str[-visible:] if visible else ""
+            masked = value_str[:visible] + "*" * (len(value_str) - 2 * visible) + suffix
 
         return masked
 
@@ -313,16 +327,16 @@ def mask_value(
             # Try to get it by name
             strategy_instance = get_strategy(strategy)
     except ValueError:
-        # Unknown strategy - return value unchanged (safe fallback)
-        return value
+        # Fail closed: an unknown strategy must never expose the raw value.
+        return "REDACTED"
 
     # Apply the strategy
     try:
         result = strategy_instance.apply(value, context)
         return result
     except Exception:
-        # Safe failure: return original value on error
-        return value
+        # Fail closed: a masking error must never expose the raw value.
+        return "REDACTED"
 
 
 # Convenience functions for specific masking operations

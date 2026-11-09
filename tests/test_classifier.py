@@ -125,6 +125,20 @@ class TestClassifierColumnNameDetection:
         result = detector.classify_by_column_name("some_random_col")
         assert result is None
 
+    @pytest.mark.parametrize("column", ["company", "span_id", "classname", "expansion"])
+    def test_short_patterns_do_not_match_inside_words(self, column):
+        """"pan" and "ssn" must not flag ordinary words that contain them."""
+        assert PIIDetector().classify_by_column_name(column) is None
+
+    @pytest.mark.parametrize(
+        "column", ["pan_number", "customer_pan", "panNumber", "user-ssn", "ssn_last4"]
+    )
+    def test_short_patterns_match_whole_words(self, column):
+        """"pan" and "ssn" must still match as words of a column name."""
+        result = PIIDetector().classify_by_column_name(column)
+        assert result is not None
+        assert result[0] == PIIClassification.PII_HIGH
+
     def test_partial_column_name_match(self):
         """Partial matches within column names should work."""
         detector = PIIDetector()

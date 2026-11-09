@@ -79,8 +79,8 @@ Different masking strategies can be applied depending on the sensitivity and acc
 
 * **HASH:** Transform sensitive values into hashed representations.
 * **REDACT:** Hide sensitive values.
-* **MASK:** Replace sensitive information with masked representations.
-* **PARTIAL MASKING:** Reveal only permitted portions of a value.
+* **PARTIAL:** Reveal only permitted portions of a value.
+* **FULL:** Return the original value to roles permitted to see it.
 
 ### 5. SQL Query Processing
 
@@ -149,24 +149,23 @@ VeilDB/
 │
 ├── backend/
 │   └── app/
-│       ├── API and backend modules
-│       ├── Schema inspection
-│       ├── PII detection
-│       └── Query processing
+│       ├── api.py            # FastAPI endpoints and API key authentication
+│       ├── database.py       # SQLAlchemy engine and schema adapter
+│       ├── query_engine.py   # SELECT validation, execution, and masking
+│       ├── masking/          # Masking strategies
+│       ├── scanner/          # PII detection and schema scanning
+│       └── security/         # Roles and masking policies
+│
+├── evaluation/
+│   └── evaluate_detector.py  # Detector precision and recall on synthetic data
 │
 ├── frontend/
-│   └── app.py
+│   └── app.py                # Streamlit dashboard
 │
 ├── tests/
 │
-├── test_debug.py
-├── test_fix.py
-├── test_output.txt
-│
 └── README.md
 ```
-
-*The backend module breakdown should be updated to match the final repository files.*
 
 ---
 
@@ -211,8 +210,6 @@ Install the dependencies specified by the project's backend and frontend require
 pip install -r requirements.txt
 ```
 
-*If the repository uses separate requirements files, install each component's dependencies separately.*
-
 ### 4. Start the Backend
 
 Choose your own secret values and set them in both the backend and frontend terminals.
@@ -240,7 +237,7 @@ Without `VEILDB_HMAC_KEY`, the API uses a random key and hashed values change af
 Start the FastAPI application using its configured Uvicorn entry point.
 
 ```bash
-uvicorn <backend_module>:app --reload --port 8000
+uvicorn backend.app.api:app --reload --port 8000
 ```
 
 ### 5. Access API Documentation
@@ -360,6 +357,17 @@ Testing should cover:
 * Invalid input handling.
 * Sensitive data protection.
 
+### Detector Evaluation
+
+Run `python -m evaluation.evaluate_detector` to measure column-level detection on randomly generated synthetic data (seed 2026, 20 repetitions, 10 samples per column). A positive means the column is flagged as sensitive.
+
+| Column names | Precision | Recall | F1 |
+| ------------ | --------: | -----: | --: |
+| Descriptive  | 0.685     | 1.000  | 0.813 |
+| Opaque (`col_01`) | 0.615 | 0.727 | 0.667 |
+
+The detector favors over-flagging, which hides more data rather than exposing it. Known limitations: digit-only identifiers and dates can be mistaken for PII, and with opaque column names it cannot detect person names, passport numbers, or numeric salaries. These results come from synthetic data and are not a measure of performance on production databases.
+
 ---
 
 ## 🎯 Use Cases
@@ -394,6 +402,10 @@ Contributions are welcome!
 ## 👥 Contributors
 
 Developed collaboratively by the VeilDB team.
+
+## 🙏 Acknowledgements
+
+VeilDB is built with these open-source projects: FastAPI, Uvicorn, SQLAlchemy, sqlglot, Streamlit, pandas, and Requests. Tests use pytest and HTTPX. All bundled records and evaluation data are fictional.
 
 ## 📜 License
 
