@@ -307,7 +307,8 @@ def _execute_query(api_url: str, query: str, role: str, automatic: bool = False)
         try:
             response = requests.post(
                 f"{api_url}/query",
-                json={"query": query, "role": role},
+                json={"query": query},
+                headers={"X-API-Key": os.environ.get(f"VEILDB_{role}_API_KEY", "")},
                 timeout=30,
             )
             if not response.ok:

@@ -62,7 +62,15 @@ class PIIDetector:
         "salary": "SALARY",
         "date_of_birth": "DATE_OF_BIRTH",
         "passport_number": "PASSPORT",
+        "full_name": "PERSON_NAME",
+        "first_name": "PERSON_NAME",
+        "last_name": "PERSON_NAME",
+        "customer_name": "PERSON_NAME",
+        "name": "PERSON_NAME",
     }
+
+    # Too generic for substring matching: "name" alone must not flag "filename".
+    EXACT_ONLY_COLUMN_PATTERNS = {"name"}
 
     # Classification mapping: PII type -> (classification, base confidence)
     TYPE_CLASSIFICATION: Dict[str, Tuple[PIIClassification, float]] = {
@@ -78,6 +86,7 @@ class PIIDetector:
         "ACCOUNT_NUMBER": (PIIClassification.PII_HIGH, 0.80),
         "PASSPORT": (PIIClassification.PII_HIGH, 0.93),
         "FINANCIAL": (PIIClassification.FINANCIAL_CONFIDENTIAL, 0.88),
+        "PERSON_NAME": (PIIClassification.PII_MEDIUM, 0.85),
     }
 
     # Financial confidential types
@@ -109,6 +118,8 @@ class PIIDetector:
 
         # Check for partial matches (e.g., "user_email", "phone_number")
         for pattern_name, pii_type in self.COLUMN_PATTERNS.items():
+            if pattern_name in self.EXACT_ONLY_COLUMN_PATTERNS:
+                continue
             if pattern_name in column_lower:
                 classification, base_confidence = self.TYPE_CLASSIFICATION[pii_type]
                 self.detection_reasons.append(DetectionReason.COLUMN_NAME_MATCH)
